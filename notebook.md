@@ -175,3 +175,21 @@ Astral has the ability to create a species tree where it collapses individuals i
 cd glemin-wheat/results
 astral -i 04-all_gene_trees.tre -a 07-species_mapping.txt -o 07-species-tree-astral4.tre
 ```
+
+## 10 Detecting hybridization using HYDE
+
+```zsh
+from Bio import SeqIO
+
+#read in the fasta format sequence
+data_path = "../data/Wheat_Relative_History_Data_Glemin_et_al/"
+concat_file = "triticeae_allindividuals_OneCopyGenes.fasta"
+records = SeqIO.parse(data_path+concat_file, "fasta")
+
+#convert the output to phylip
+count = SeqIO.write(records, "../results/10-triticeae_allindividuals_OneCopyGenes.phylip", "phylip-relaxed")
+
+```
+
+## 11 Hybrid detection with MSCQuartets and Visualization
+Find notes in Phylo_Practicum_R.Rmd
