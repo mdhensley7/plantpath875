@@ -176,6 +176,141 @@ cd glemin-wheat/results
 astral -i 04-all_gene_trees.tre -a 07-species_mapping.txt -o 07-species-tree-astral4.tre
 ```
 
+
+## 08 Species tree visualizations
+Find notes in Phylo_Practicum_R.Rmd
+
+## 09 Species Network
+Using SNaQ and PhyloNetworks in Julia to do species network analysis with our estimated gene trees
+    - We will run SNaQ on multiple alleles to estimate species network from 13 wheat species and 4 outgroups
+```zsh
+cd glemin-wheat/code
+```
+
+In terminal run "julia" to open Julia
+
+```julia
+using PhyloNetworks
+using SNaQ
+using CSV, DataFrames
+
+mappingfile = CSV.read("../results/07-species_mapping.txt", DataFrame; header=false, delim=' ')
+```
+Rotating columns to organize data in a readable manner
+
+```julia
+rename!(mappingfile, :Column1 => :individual)
+rename!(mappingfile, :Column2 => :species)
+
+select!(mappingfile,[:species, :individual])
+
+## We want to remove 3 of the 4 outgroups to simplify the analysis:
+## We keep `H_vulgare_HVens23`, 
+## We remove `Ta_caputMedusae_TB2`, `Er_bonaepartis_TB1`, `S_vavilovii_Tr279`
+filter(row -> row.species in ["Ta_caputMedusae", "Er_bonaepartis", "S_vavilovii"], mappingfile)
+size(mappingfile) ## (47,2)
+
+mappingfile = filter(row -> !(row.species in ["Ta_caputMedusae", "Er_bonaepartis", "S_vavilovii"]), mappingfile)
+size(mappingfile) ## (44, 2)
+
+CSV.write("../results/09-species_mapping.csv", mappingfile)
+
+## mappingfile = CSV.read("../results/09-species_mapping.csv", DataFrame)
+taxonmap = Dict(r[:individual] => r[:species] for r in eachrow(mappingfile)) # as dictionary
+```
+
+Read genes trees and compute CF table
+
+```julia
+trees = readmultinewick("../results/04-all_gene_trees.tre")
+length(trees) ## 8708
+
+
+for gt in trees
+  for badtip in ["Ta_caputMedusae_TB2", "Er_bonaepartis_TB1", "S_vavilovii_Tr279"]
+    if badtip in tiplabels(gt)
+      deleteleaf!(gt, badtip)
+    end
+  end
+end
+
+
+writemultinewick(trees, "../results/09-all_gene_trees_snaq.tre")
+
+## trees = readmultinewick("../results/09-all_gene_trees_snaq.tre")
+
+## creating CF table:
+df_sp = tablequartetCF(countquartetsintrees(trees, taxonmap; showprogressbar=false)...);
+keys(df_sp)  # columns names
+CSV.write("../results/09-tableCF_species.csv", df_sp); 
+```
+Running SNaQ to infer phylogenetic network
+```zsh
+julia -t 2 #Opens julia with multithreads
+```
+
+```julia
+using Distributed
+addprocs(4)
+
+@everywhere using PhyloNetworks
+@everywhere using SNaQ
+
+## read table of CF
+d_sp = readtableCF("../results/09-tableCF_species.csv"); # "DataCF" object for use in snaq!
+#read in the species tree from ASTRAL as a starting point
+T_sp = readnewick("../results/07-species-tree-astral4.tre")
+
+net = snaq!(T_sp, d_sp, runs=100, Nfail=200, filename= "../results/snaq/09-snaq-h1",seed=8485);
+```
+
+Plot with
+```julia
+using PhyloPlots
+# net = readnewick("(Ae_sharonensis,Ae_longissima,(Ae_bicornis,(Ae_searsii,((Ae_tauschii,(((Ae_uniaristata,Ae_comosa)1:0.4918206502664954,(Ae_caudata,Ae_umbellulata)1:0.13449338165653227)1:0.00911821493436927,((T_boeoticum,T_urartu)1:1.6460105085783057,(H_vulgare,((Ae_speltoides,Ae_mutica)1:0.07124470208266999)#H26:0.14159810198824307::0.7563186990617421)1:0.1869824746969994)1:0.46325640725730144)0.99651:0.06048455134529327):0.16788568790821257,#H26:0.0::0.2436813009382579):0.45932787904385297)1:0.9296082436533977)1:0.5926597507029276)1;")
+plot(net, showedgenumber=true)
+
+##---To root on the outgroup and color coordinate---#
+rootonedge!(net, 16)
+rotate!(net,22)
+rotate!(net,23)
+rotate!(net,-6)
+rotate!(net,12)
+rotate!(net,11)
+plot(net, showgamma=true)
+
+using DataFrames
+
+tipnodes = [n.number for n in net.node if n.leaf]
+tipnames = [n.name for n in net.node if n.leaf]
+
+tipcolors = Dict(
+    "T_urartu" => "darkolivegreen",
+    "T_boeoticum" => "darkolivegreen",
+    "Ae_comosa" => "chocolate",
+    "Ae_uniaristata" => "chocolate",
+    "Ae_caudata" => "khaki",
+    "Ae_umbellulata" => "gold",
+    "Ae_tauschii" => "red",
+    "Ae_longissima" => "mediumorchid",
+    "Ae_sharonensis" => "mediumorchid",
+    "Ae_bicornis" => "mediumorchid",
+    "Ae_searsii" => "mediumorchid",
+    "Ae_mutica" => "dodgerblue",
+    "Ae_speltoides" => "navy"
+)
+
+colors = [get(tipcolors, name, "black") for name in tipnames]
+
+nodelabel = DataFrame(
+    number = tipnodes,
+    label = tipnames,
+    nodelabelcolor = colors
+)
+
+plot(net, nodelabel = nodelabel)
+```
+
 ## 10 Detecting hybridization using HYDE
 
 ```zsh
